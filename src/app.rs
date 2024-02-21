@@ -6,8 +6,6 @@ use epaint::PathShape;
 
 const CONTROL_POINT_RADIUS: f32 = 8.0;
 
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)]
 pub struct TemplateApp {
     points: Vec<CurvePoint>,
 }
@@ -104,7 +102,6 @@ impl eframe::App for TemplateApp {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
 pub enum CurvePoint {
     First(Pos2),
     /// All other points
