@@ -35,9 +35,9 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             let to_screen = emath::RectTransform::from_to(
                 Rect::from_min_size(Pos2::ZERO, Vec2::new(4.0, 100.0)),
-                Rect::from_min_size(Pos2::ZERO, ui.available_size()),
+                Rect::from_min_size(ui.next_widget_position(), ui.available_size()),
             );
-            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
+            let (response, painter) = ui.allocate_painter(to_screen.to().size(), Sense::hover());
 
             for i in 0..=4 {
                 let stroke = Stroke::new(
@@ -132,9 +132,9 @@ impl CurvePoint {
                 let point_rect = self.point_rect(to_screen);
                 Shape::convex_polygon(
                     vec![
-                        point_rect.right_top(),
-                        point_rect.right_bottom(),
-                        point_rect.left_center(),
+                        point_rect.center_top(),
+                        point_rect.center_bottom(),
+                        point_rect.right_center(),
                     ],
                     Color32::TRANSPARENT,
                     stroke,
@@ -150,9 +150,9 @@ impl CurvePoint {
                 let point_rect = self.point_rect(to_screen);
                 Shape::convex_polygon(
                     vec![
-                        point_rect.left_top(),
-                        point_rect.left_bottom(),
-                        point_rect.right_center(),
+                        point_rect.center_top(),
+                        point_rect.center_bottom(),
+                        point_rect.left_center(),
                     ],
                     Color32::TRANSPARENT,
                     stroke,
