@@ -16,9 +16,11 @@ impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             points: vec![
-                CurvePoint::Outer(Pos2::new(0.0, 0.0)),
-                CurvePoint::Bezier(Pos2::new(2.0, 50.0)),
-                CurvePoint::Outer(Pos2::new(4.0, 100.0)),
+                CurvePoint::First(Pos2::new(0.0, 0.0)),
+                CurvePoint::Bezier(Pos2::new(1.0, 25.0)),
+                CurvePoint::Inner(Pos2::new(2.0, 50.0)),
+                CurvePoint::Bezier(Pos2::new(3.0, 75.0)),
+                CurvePoint::Last(Pos2::new(4.0, 100.0)),
             ],
         }
     }
@@ -66,14 +68,21 @@ impl eframe::App for TemplateApp {
                 .iter()
                 .map(|p| p.screen_pos(to_screen))
                 .collect();
-            let points = points_in_screen.clone().try_into().unwrap();
-            let shape = QuadraticBezierShape::from_points_stroke(
-                points,
-                false,
-                Color32::TRANSPARENT,
-                Stroke::new(1.0, Color32::from_rgb(25, 200, 100)),
-            );
-            painter.add(shape);
+
+            for i in 0..(points_in_screen.len() - 1) / 2 {
+                let shape = QuadraticBezierShape::from_points_stroke(
+                    [
+                        points_in_screen[i * 2],
+                        points_in_screen[i * 2 + 1],
+                        points_in_screen[i * 2 + 2],
+                    ],
+                    false,
+                    Color32::TRANSPARENT,
+                    Stroke::new(1.0, Color32::from_rgb(25, 200, 100)),
+                );
+                painter.add(shape);
+            }
+
             painter.add(PathShape::line(
                 points_in_screen,
                 Stroke::new(1.0, Color32::RED.linear_multiply(0.25)),
@@ -85,12 +94,12 @@ impl eframe::App for TemplateApp {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub enum CurvePoint {
-    /// First and last must be a outer point
-    Outer(Pos2),
+    First(Pos2),
     /// All other points
     Inner(Pos2),
     /// In between each Outer and Inner Points are the Bezier points to define the curves
     Bezier(Pos2),
+    Last(Pos2),
 }
 
 impl CurvePoint {
@@ -103,12 +112,35 @@ impl CurvePoint {
 
     pub fn shape(&self, to_screen: RectTransform, stroke: Stroke) -> Shape {
         match self {
-            CurvePoint::Outer(_) => {
+            CurvePoint::First(_) => {
+                let point_rect = self.point_rect(to_screen);
+                Shape::convex_polygon(
+                    vec![
+                        point_rect.right_top(),
+                        point_rect.right_bottom(),
+                        point_rect.left_center(),
+                    ],
+                    Color32::TRANSPARENT,
+                    stroke,
+                )
+            }
+            CurvePoint::Inner(_) => {
                 Shape::rect_stroke(self.point_rect(to_screen), Rounding::default(), stroke)
             }
-            CurvePoint::Inner(_) => todo!(),
             CurvePoint::Bezier(_) => {
                 Shape::circle_stroke(self.screen_pos(to_screen), CONTROL_POINT_RADIUS, stroke)
+            }
+            CurvePoint::Last(_) => {
+                let point_rect = self.point_rect(to_screen);
+                Shape::convex_polygon(
+                    vec![
+                        point_rect.left_top(),
+                        point_rect.left_bottom(),
+                        point_rect.right_center(),
+                    ],
+                    Color32::TRANSPARENT,
+                    stroke,
+                )
             }
         }
     }
@@ -123,17 +155,17 @@ impl CurvePoint {
 
     pub fn pos(&self) -> Pos2 {
         match self {
-            CurvePoint::Outer(pos) => *pos,
+            CurvePoint::First(pos) => *pos,
             CurvePoint::Inner(pos) => *pos,
             CurvePoint::Bezier(pos) => *pos,
+            CurvePoint::Last(pos) => *pos,
         }
     }
 
     pub fn set_pos(&mut self, new_pos: Pos2) {
         match self {
-            CurvePoint::Outer(pos) => pos.y = new_pos.y,
-            CurvePoint::Inner(pos) => *pos = new_pos,
-            CurvePoint::Bezier(pos) => *pos = new_pos,
+            CurvePoint::First(pos) | CurvePoint::Last(pos) => pos.y = new_pos.y,
+            CurvePoint::Inner(pos) | CurvePoint::Bezier(pos) => *pos = new_pos,
         }
     }
 }
