@@ -7,12 +7,14 @@ use epaint::PathShape;
 const CONTROL_POINT_RADIUS: f32 = 8.0;
 
 pub struct TemplateApp {
+    linked: bool,
     points: Vec<CurvePoint>,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
+            linked: false,
             points: vec![
                 CurvePoint::First(Pos2::new(0.0, 0.0)),
                 CurvePoint::Bezier(Pos2::new(1.0, 25.0)),
@@ -63,22 +65,49 @@ impl eframe::App for TemplateApp {
                 ));
             }
 
+            let mut outer_change = None;
             let control_point_shapes: Vec<Shape> = self
                 .points
                 .iter_mut()
                 .enumerate()
                 .map(|(i, point)| {
                     let point_id = response.id.with(i);
+                    if point.outer()
+                        && ui
+                            .interact(point.point_rect(to_screen), point_id, Sense::click())
+                            .double_clicked()
+                    {
+                        self.linked = !self.linked;
+                        if self.linked {
+                            outer_change = Some((i, point.pos()));
+                        }
+                    }
                     let point_response =
                         ui.interact(point.point_rect(to_screen), point_id, Sense::drag());
                     point.set_screen_pos(
                         to_screen,
                         point.screen_pos(to_screen) + point_response.drag_delta(),
                     );
-                    let stroke = ui.style().interact(&point_response).fg_stroke;
+                    if point_response.dragged() && point.outer() && self.linked {
+                        outer_change = Some((i, point.pos()));
+                    }
+                    let stroke = if point.outer() && self.linked {
+                        let mut stroke = ui.style().interact(&point_response).fg_stroke;
+                        stroke.color = Color32::LIGHT_BLUE;
+                        stroke
+                    } else {
+                        ui.style().interact(&point_response).fg_stroke
+                    };
                     point.shape(to_screen, stroke)
                 })
                 .collect();
+            if let Some((i, pos)) = outer_change {
+                let i = self.points.len() - i - 1;
+                if let Some(point) = self.points.get_mut(i) {
+                    point.set_pos(pos);
+                }
+                ctx.request_repaint();
+            }
 
             let points_in_screen: Vec<Pos2> = self
                 .points
@@ -119,6 +148,10 @@ pub enum CurvePoint {
 }
 
 impl CurvePoint {
+    pub fn outer(&self) -> bool {
+        matches!(self, CurvePoint::First(_) | CurvePoint::Last(_))
+    }
+
     pub fn point_rect(&self, to_screen: RectTransform) -> Rect {
         Rect::from_center_size(
             self.screen_pos(to_screen),
