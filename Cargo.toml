@@ -20,6 +20,7 @@ env_logger = "0.11"
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wgpu = { version = "*", features = ["webgpu", "webgl"] }
+web-sys = "=0.3.67"
 wasm-bindgen-futures = "0.4"
 
 
