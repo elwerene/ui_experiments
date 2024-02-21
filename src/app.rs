@@ -39,20 +39,27 @@ impl eframe::App for TemplateApp {
             );
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
 
-            for i in 1..=3 {
+            for i in 0..=4 {
+                let stroke = Stroke::new(
+                    match i {
+                        0 | 4 => 1.0,
+                        _ => 0.5,
+                    },
+                    Color32::GRAY,
+                );
                 painter.add(PathShape::line(
                     vec![
                         to_screen.transform_pos(Pos2::new(i as f32, 0.0)),
                         to_screen.transform_pos(Pos2::new(i as f32, 100.0)),
                     ],
-                    Stroke::new(1.0, Color32::GRAY),
+                    stroke,
                 ));
                 painter.add(PathShape::line(
                     vec![
                         to_screen.transform_pos(Pos2::new(0.0, (i * 25) as f32)),
                         to_screen.transform_pos(Pos2::new(4.0, (i * 25) as f32)),
                     ],
-                    Stroke::new(1.0, Color32::GRAY),
+                    stroke,
                 ));
             }
 
