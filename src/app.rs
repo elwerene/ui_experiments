@@ -39,7 +39,56 @@ impl eframe::App for TemplateApp {
                 Rect::from_min_size(Pos2::ZERO, Vec2::new(4.0, 100.0)),
                 Rect::from_min_size(ui.next_widget_position(), ui.available_size()),
             );
+
+            let mut outer_change = None;
+            let mut bezier_to_line = None;
+            let mut remove_point = None;
+
             let (response, painter) = ui.allocate_painter(to_screen.to().size(), Sense::hover());
+            let new_point_id = response.id.with(self.points.len());
+            let new_point_response = ui.interact(*to_screen.to(), new_point_id, Sense::click());
+            if new_point_response.double_clicked()
+                || new_point_response.clicked_by(egui::PointerButton::Secondary)
+            {
+                if let Some((pos, i, before, after)) =
+                    new_point_response.interact_pointer_pos().and_then(|pos| {
+                        self.points
+                            .iter()
+                            .position(|point| point.screen_pos(to_screen).x > pos.x)
+                            .and_then(|i| {
+                                self.points.get(i).and_then(|after| {
+                                    self.points
+                                        .get(i - 1)
+                                        .map(|before| (pos, i, *before, *after))
+                                })
+                            })
+                    })
+                {
+                    if before.is_inner() || before.is_outer() {
+                        self.points
+                            .insert(i, CurvePoint::Inner(to_screen.inverse().transform_pos(pos)));
+                        self.points.insert(
+                            i,
+                            CurvePoint::Bezier(to_screen.inverse().transform_pos(Pos2::new(
+                                (before.screen_pos(to_screen).x + pos.x) / 2.0,
+                                (before.screen_pos(to_screen).y + pos.y) / 2.0,
+                            ))),
+                        );
+                        bezier_to_line = Some(i + 2);
+                    } else {
+                        bezier_to_line = Some(i - 1);
+                        self.points.insert(
+                            i,
+                            CurvePoint::Bezier(to_screen.inverse().transform_pos(Pos2::new(
+                                (after.screen_pos(to_screen).x + pos.x) / 2.0,
+                                (after.screen_pos(to_screen).y + pos.y) / 2.0,
+                            ))),
+                        );
+                        self.points
+                            .insert(i, CurvePoint::Inner(to_screen.inverse().transform_pos(pos)));
+                    }
+                }
+            }
 
             for i in 0..=4 {
                 let stroke = Stroke::new(
@@ -65,33 +114,60 @@ impl eframe::App for TemplateApp {
                 ));
             }
 
-            let mut outer_change = None;
+            let x_limits = { 0..self.points.len() }
+                .map(|i| {
+                    if i == 0 {
+                        return None;
+                    }
+                    self.points
+                        .get(i - 1)
+                        .map(|point| point.screen_pos(to_screen).x)
+                        .and_then(|before| {
+                            self.points
+                                .get(i + 1)
+                                .map(|point| (before, point.screen_pos(to_screen).x))
+                        })
+                })
+                .collect::<Vec<_>>();
+
             let control_point_shapes: Vec<Shape> = self
                 .points
                 .iter_mut()
                 .enumerate()
                 .map(|(i, point)| {
                     let point_id = response.id.with(i);
-                    if point.outer()
-                        && ui
-                            .interact(point.point_rect(to_screen), point_id, Sense::click())
-                            .double_clicked()
+                    let point_response = ui.interact(
+                        point.point_rect(to_screen),
+                        point_id,
+                        Sense::click_and_drag(),
+                    );
+
+                    if point_response.double_clicked()
+                        || point_response.clicked_by(egui::PointerButton::Secondary)
                     {
-                        self.linked = !self.linked;
-                        if self.linked {
+                        if point.is_outer() {
+                            self.linked = !self.linked;
+                            if self.linked {
+                                outer_change = Some((i, point.pos()));
+                            }
+                        } else if point.is_bezier() {
+                            bezier_to_line = Some(i);
+                        } else if point.is_inner() {
+                            remove_point = Some(i);
+                        }
+                    } else {
+                        let mut new_screen_pos =
+                            point.screen_pos(to_screen) + point_response.drag_delta();
+                        if let Some(x_limit) = x_limits.get(i).and_then(|x_limit| *x_limit) {
+                            new_screen_pos.x = new_screen_pos.x.clamp(x_limit.0, x_limit.1)
+                        }
+                        point.set_screen_pos(to_screen, new_screen_pos);
+                        if point_response.dragged() && point.is_outer() && self.linked {
                             outer_change = Some((i, point.pos()));
                         }
                     }
-                    let point_response =
-                        ui.interact(point.point_rect(to_screen), point_id, Sense::drag());
-                    point.set_screen_pos(
-                        to_screen,
-                        point.screen_pos(to_screen) + point_response.drag_delta(),
-                    );
-                    if point_response.dragged() && point.outer() && self.linked {
-                        outer_change = Some((i, point.pos()));
-                    }
-                    let stroke = if point.outer() && self.linked {
+
+                    let stroke = if point.is_outer() && self.linked {
                         let mut stroke = ui.style().interact(&point_response).fg_stroke;
                         stroke.color = Color32::LIGHT_BLUE;
                         stroke
@@ -101,12 +177,30 @@ impl eframe::App for TemplateApp {
                     point.shape(to_screen, stroke)
                 })
                 .collect();
+
             if let Some((i, pos)) = outer_change {
                 let i = self.points.len() - i - 1;
                 if let Some(point) = self.points.get_mut(i) {
                     point.set_pos(pos);
                 }
                 ctx.request_repaint();
+            }
+            if let Some(i) = remove_point {
+                self.points.remove(i);
+                self.points.remove(i);
+                bezier_to_line = Some(i - 1);
+            }
+            if let Some(i) = bezier_to_line {
+                if let (Some(before), Some(after), Some(point)) = (
+                    self.points.get(i - 1).map(|point| point.pos()),
+                    self.points.get(i + 1).map(|point| point.pos()),
+                    self.points.get_mut(i),
+                ) {
+                    point.set_pos(Pos2::new(
+                        (before.x + after.x) / 2.0,
+                        (before.y + after.y) / 2.0,
+                    ));
+                }
             }
 
             let points_in_screen: Vec<Pos2> = self
@@ -138,6 +232,7 @@ impl eframe::App for TemplateApp {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub enum CurvePoint {
     First(Pos2),
     /// All other points
@@ -148,8 +243,16 @@ pub enum CurvePoint {
 }
 
 impl CurvePoint {
-    pub fn outer(&self) -> bool {
+    pub fn is_inner(&self) -> bool {
+        matches!(self, CurvePoint::Inner(_))
+    }
+
+    pub fn is_outer(&self) -> bool {
         matches!(self, CurvePoint::First(_) | CurvePoint::Last(_))
+    }
+
+    pub fn is_bezier(&self) -> bool {
+        matches!(self, CurvePoint::Bezier(_))
     }
 
     pub fn point_rect(&self, to_screen: RectTransform) -> Rect {
