@@ -33,18 +33,30 @@ impl TemplateApp {
 }
 
 impl eframe::App for TemplateApp {
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             let to_screen = emath::RectTransform::from_to(
                 Rect::from_min_size(Pos2::ZERO, Vec2::new(4.0, 100.0)),
                 Rect::from_min_size(Pos2::ZERO, ui.available_size()),
             );
-
             let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
+
+            for i in 1..=3 {
+                painter.add(PathShape::line(
+                    vec![
+                        to_screen.transform_pos(Pos2::new(i as f32, 0.0)),
+                        to_screen.transform_pos(Pos2::new(i as f32, 100.0)),
+                    ],
+                    Stroke::new(1.0, Color32::GRAY),
+                ));
+                painter.add(PathShape::line(
+                    vec![
+                        to_screen.transform_pos(Pos2::new(0.0, (i * 25) as f32)),
+                        to_screen.transform_pos(Pos2::new(4.0, (i * 25) as f32)),
+                    ],
+                    Stroke::new(1.0, Color32::GRAY),
+                ));
+            }
 
             let control_point_shapes: Vec<Shape> = self
                 .points
