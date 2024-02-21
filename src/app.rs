@@ -1,109 +1,139 @@
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct TemplateApp {
-    // Example stuff:
-    label: String,
+use egui::{
+    epaint::QuadraticBezierShape, Color32, Pos2, Rect, Rounding, Sense, Shape, Stroke, Vec2,
+};
+use emath::RectTransform;
+use epaint::PathShape;
 
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
+const CONTROL_POINT_RADIUS: f32 = 8.0;
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct TemplateApp {
+    points: Vec<CurvePoint>,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
+            points: vec![
+                CurvePoint::Outer(Pos2::new(0.0, 0.0)),
+                CurvePoint::Bezier(Pos2::new(2.0, 50.0)),
+                CurvePoint::Outer(Pos2::new(4.0, 100.0)),
+            ],
         }
     }
 }
 
 impl TemplateApp {
-    /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
-
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Default::default()
     }
 }
 
 impl eframe::App for TemplateApp {
-    /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
-    /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
-
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
-
-            egui::menu::bar(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
-                }
-
-                egui::widgets::global_dark_light_mode_buttons(ui);
-            });
-        });
-
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
+            let to_screen = emath::RectTransform::from_to(
+                Rect::from_min_size(Pos2::ZERO, Vec2::new(4.0, 100.0)),
+                Rect::from_min_size(Pos2::ZERO, ui.available_size()),
+            );
 
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
+            let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
 
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
+            let control_point_shapes: Vec<Shape> = self
+                .points
+                .iter_mut()
+                .enumerate()
+                .map(|(i, point)| {
+                    let point_id = response.id.with(i);
+                    let point_response =
+                        ui.interact(point.point_rect(to_screen), point_id, Sense::drag());
+                    point.set_screen_pos(
+                        to_screen,
+                        point.screen_pos(to_screen) + point_response.drag_delta(),
+                    );
+                    let stroke = ui.style().interact(&point_response).fg_stroke;
+                    point.shape(to_screen, stroke)
+                })
+                .collect();
 
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/master/",
-                "Source code."
+            let points_in_screen: Vec<Pos2> = self
+                .points
+                .iter()
+                .map(|p| p.screen_pos(to_screen))
+                .collect();
+            let points = points_in_screen.clone().try_into().unwrap();
+            let shape = QuadraticBezierShape::from_points_stroke(
+                points,
+                false,
+                Color32::TRANSPARENT,
+                Stroke::new(1.0, Color32::from_rgb(25, 200, 100)),
+            );
+            painter.add(shape);
+            painter.add(PathShape::line(
+                points_in_screen,
+                Stroke::new(1.0, Color32::RED.linear_multiply(0.25)),
             ));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
-            });
+            painter.extend(control_point_shapes);
         });
     }
 }
 
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        ui.label("Powered by ");
-        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-        ui.label(" and ");
-        ui.hyperlink_to(
-            "eframe",
-            "https://github.com/emilk/egui/tree/master/crates/eframe",
-        );
-        ui.label(".");
-    });
+#[derive(serde::Deserialize, serde::Serialize)]
+pub enum CurvePoint {
+    /// First and last must be a outer point
+    Outer(Pos2),
+    /// All other points
+    Inner(Pos2),
+    /// In between each Outer and Inner Points are the Bezier points to define the curves
+    Bezier(Pos2),
+}
+
+impl CurvePoint {
+    pub fn point_rect(&self, to_screen: RectTransform) -> Rect {
+        Rect::from_center_size(
+            self.screen_pos(to_screen),
+            Vec2::splat(2.0 * CONTROL_POINT_RADIUS),
+        )
+    }
+
+    pub fn shape(&self, to_screen: RectTransform, stroke: Stroke) -> Shape {
+        match self {
+            CurvePoint::Outer(_) => {
+                Shape::rect_stroke(self.point_rect(to_screen), Rounding::default(), stroke)
+            }
+            CurvePoint::Inner(_) => todo!(),
+            CurvePoint::Bezier(_) => {
+                Shape::circle_stroke(self.screen_pos(to_screen), CONTROL_POINT_RADIUS, stroke)
+            }
+        }
+    }
+
+    pub fn screen_pos(&self, to_screen: RectTransform) -> Pos2 {
+        to_screen.transform_pos(self.pos())
+    }
+
+    pub fn set_screen_pos(&mut self, to_screen: RectTransform, screen_pos: Pos2) {
+        self.set_pos(to_screen.inverse().transform_pos_clamped(screen_pos));
+    }
+
+    pub fn pos(&self) -> Pos2 {
+        match self {
+            CurvePoint::Outer(pos) => *pos,
+            CurvePoint::Inner(pos) => *pos,
+            CurvePoint::Bezier(pos) => *pos,
+        }
+    }
+
+    pub fn set_pos(&mut self, new_pos: Pos2) {
+        match self {
+            CurvePoint::Outer(pos) => pos.y = new_pos.y,
+            CurvePoint::Inner(pos) => *pos = new_pos,
+            CurvePoint::Bezier(pos) => *pos = new_pos,
+        }
+    }
 }

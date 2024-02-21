@@ -927,7 +927,10 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "egui_plot",
+ "emath",
  "env_logger",
+ "epaint",
  "log",
  "serde",
  "wasm-bindgen-futures",
@@ -980,6 +983,15 @@ dependencies = [
  "raw-window-handle 0.5.2",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "egui_plot"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c9fb26a588e070434a0b23783d8fc22a4c359ac5177401c9029add9dd2685f7"
+dependencies = [
+ "egui",
 ]
 
 [[package]]
