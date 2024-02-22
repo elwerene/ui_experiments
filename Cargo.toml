@@ -6,6 +6,7 @@ edition = "2021"
 rust-version = "1.72"
 
 [dependencies]
+chrono = "0.4"
 egui = "0.26.0"
 egui_plot = "0.26.0"
 epaint = "0.26.0"
