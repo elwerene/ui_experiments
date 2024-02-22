@@ -4,6 +4,8 @@ use self::point::CurvePoint;
 use egui::{epaint::QuadraticBezierShape, Color32, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 use epaint::PathShape;
 
+const PRECISION: f32 = 0.005; // 100 updates per second at 240 bpm
+
 pub struct Curve {
     linked: bool,
     points: Vec<CurvePoint>,
@@ -277,13 +279,13 @@ impl Curve {
                     Stroke::default(),
                 );
 
-                // Binary search for t with (sample(t).x - beat_position).abs() < 0.001
+                // Binary search for t with (sample(t).x - beat_position).abs() < PRECISION
                 let mut n = 2;
                 let mut t = 0.5;
                 loop {
                     let sample = bezier.sample(t);
                     let e = sample.x - beat_position;
-                    if e.abs() < 0.001 {
+                    if e.abs() < PRECISION {
                         break sample.y;
                     }
                     let step = 1.0 / 2.0f32.powi(n);
