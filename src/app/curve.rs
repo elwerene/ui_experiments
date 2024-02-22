@@ -276,6 +276,8 @@ impl Curve {
                     Color32::TRANSPARENT,
                     Stroke::default(),
                 );
+
+                // Binary search for t with (sample(t).x - beat_position).abs() < 0.001
                 let mut n = 2;
                 let mut t = 0.5;
                 loop {
